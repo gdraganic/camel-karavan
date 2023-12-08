@@ -59,7 +59,7 @@ export function ServicesTableRow (props: Props) {
                         <Tooltip content={"Start container"} position={"bottom"}>
                             <Button variant={"plain"} icon={<PlayIcon/>} isDisabled={!commands.includes('run') || inTransit}
                                     onClick={e => {
-                                        KaravanApi.manageContainer(config.environment, 'devservice', service.container_name, 'run', res => {});
+                                        KaravanApi.manageContainer(service.container_name, 'devservice', service.container_name, 'run', false,res => {});
                                     }}></Button>
                         </Tooltip>
                     </FlexItem>
@@ -75,7 +75,7 @@ export function ServicesTableRow (props: Props) {
                         <Tooltip content={"Stop container"} position={"bottom"}>
                             <Button variant={"plain"} icon={<StopIcon/>} isDisabled={!commands.includes('stop') || inTransit}
                                     onClick={e => {
-                                        KaravanApi.manageContainer(config.environment, 'devservice', service.container_name, 'stop', res => {});
+                                        KaravanApi.manageContainer(service.container_name, 'devservice', service.container_name, 'stop', false,res => {});
                                     }}></Button>
                         </Tooltip>
                     </FlexItem>
@@ -83,7 +83,7 @@ export function ServicesTableRow (props: Props) {
                         <Tooltip content={"Delete container"} position={"bottom"}>
                             <Button variant={"plain"} icon={<DeleteIcon/>} isDisabled={!commands.includes('delete') || inTransit}
                                     onClick={e => {
-                                        KaravanApi.deleteContainer(config.environment, 'devservice', service.container_name, res => {});
+                                        KaravanApi.deleteContainer(service.container_name, 'devservice', service.container_name, res => {});
                                     }}></Button>
                         </Tooltip>
                     </FlexItem>
@@ -97,6 +97,7 @@ export function ServicesTableRow (props: Props) {
     const env = service.environment;
     const keys = Object.keys(env);
     const container = props.container;
+    const ports = container?.ports || [];
     const isRunning = container?.state === 'running';
     const inTransit = container?.inTransit;
     const color = isRunning ? "green" : "grey";
@@ -144,10 +145,26 @@ export function ServicesTableRow (props: Props) {
             {keys.length > 0 && <Tr isExpanded={isExpanded}>
                 <Td></Td>
                 <Td colSpan={2}>Environment Variables</Td>
-                <Td colSpan={2}>
+                <Td colSpan={1}>
                     <ExpandableRowContent>
                         <Flex direction={{default: "column"}} cellPadding={"0px"}>
                         {keys.map(key => <FlexItem key={key}>{key + ": " + env[key]}</FlexItem>)}
+                        </Flex>
+                    </ExpandableRowContent>
+                </Td>
+                <Td colSpan={1}>
+                    <ExpandableRowContent>
+                        <Flex direction={{default: "row"}} cellPadding={"0px"}>
+                            {ports.sort((a, b) => a.privatePort && b.privatePort && (a.privatePort > b.privatePort) ? 1 : -1)
+                                .map((port, index) => {
+                                    const start = port.publicPort ? port.publicPort + "->" : "";
+                                    const end = port.privatePort + "/" + port.type;
+                                    return (
+                                        <FlexItem key={index}>
+                                            {start + end}
+                                        </FlexItem>
+                                    )
+                                })}
                         </Flex>
                     </ExpandableRowContent>
                 </Td>

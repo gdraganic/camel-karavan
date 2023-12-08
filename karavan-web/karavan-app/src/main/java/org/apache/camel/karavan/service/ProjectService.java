@@ -18,17 +18,24 @@ package org.apache.camel.karavan.service;
 
 import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.eventbus.EventBus;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Default;
+import jakarta.inject.Inject;
 import org.apache.camel.karavan.code.CodeService;
 import org.apache.camel.karavan.code.DockerComposeConverter;
-import org.apache.camel.karavan.docker.DockerForKaravan;
 import org.apache.camel.karavan.code.model.DockerComposeService;
+import org.apache.camel.karavan.docker.DockerForKaravan;
 import org.apache.camel.karavan.git.GitService;
-import org.apache.camel.karavan.git.model.GitConfig;
 import org.apache.camel.karavan.git.model.GitRepo;
 import org.apache.camel.karavan.infinispan.InfinispanService;
-import org.apache.camel.karavan.infinispan.model.*;
+import org.apache.camel.karavan.infinispan.model.ContainerStatus;
+import org.apache.camel.karavan.infinispan.model.GroupedKey;
+import org.apache.camel.karavan.infinispan.model.Project;
+import org.apache.camel.karavan.infinispan.model.ProjectFile;
 import org.apache.camel.karavan.kubernetes.KubernetesService;
 import org.apache.camel.karavan.registry.RegistryService;
+import org.apache.camel.karavan.shared.Property;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.health.HealthCheck;
@@ -36,11 +43,6 @@ import org.eclipse.microprofile.health.HealthCheckResponse;
 import org.eclipse.microprofile.health.Readiness;
 import org.jboss.logging.Logger;
 
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Default;
-import jakarta.inject.Inject;
-
-import java.io.File;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,8 +59,6 @@ public class ProjectService implements HealthCheck {
 
     @ConfigProperty(name = "karavan.environment")
     String environment;
-
-
 
     @Inject
     InfinispanService infinispanService;
@@ -106,10 +106,9 @@ public class ProjectService implements HealthCheck {
             if (ConfigService.inKubernetes()) {
                 kubernetesService.runDevModeContainer(project, jBangOptions);
             } else {
-                Map<String, String> files = codeService.getProjectFiles(project.getProjectId(), true);
+                Map<String, String> files = codeService.getProjectFilesForDevMode(project.getProjectId(), true);
 
-                ProjectFile compose = infinispanService.getProjectFile(project.getProjectId(), PROJECT_COMPOSE_FILENAME);
-                DockerComposeService dcs = DockerComposeConverter.fromCode(compose.getCode(), project.getProjectId());
+                DockerComposeService dcs = codeService.getDockerComposeService(project.getProjectId());
                 dockerForKaravan.runProjectInDevMode(project.getProjectId(), jBangOptions, dcs.getPortsMap(), files);
             }
             return containerName;
@@ -148,7 +147,6 @@ public class ProjectService implements HealthCheck {
 
     public List<Project> getAllProjects(String type) {
         if (infinispanService.isReady()) {
-            List<ProjectFile> files = infinispanService.getProjectFilesByName(PROJECT_COMPOSE_FILENAME);
             return infinispanService.getProjects().stream()
                     .filter(p -> type == null || Objects.equals(p.getType().name(), type))
                     .sorted(Comparator.comparing(Project::getProjectId))
@@ -186,9 +184,64 @@ public class ProjectService implements HealthCheck {
         return project;
     }
 
+    public Project copy(String sourceProjectId, Project project) throws Exception {
+        Project sourceProject = infinispanService.getProject(sourceProjectId);
+        // Save project
+        infinispanService.saveProject(project);
+
+        // Copy files from the source and make necessary modifications
+        Map<GroupedKey, ProjectFile> filesMap = infinispanService.getProjectFilesMap(sourceProjectId).entrySet().stream()
+                .filter(e -> !Objects.equals(e.getValue().getName(), PROJECT_COMPOSE_FILENAME) &&
+                        !Objects.equals(e.getValue().getName(), PROJECT_DEPLOYMENT_JKUBE_FILENAME)
+                )
+                .collect(Collectors.toMap(
+                        e -> new GroupedKey(project.getProjectId(), e.getKey().getEnv(), e.getKey().getKey()),
+                        e -> {
+                            ProjectFile file = e.getValue();
+                            file.setProjectId(project.getProjectId());
+                            if(Objects.equals(file.getName(), APPLICATION_PROPERTIES_FILENAME)) {
+                                modifyPropertyFileOnProjectCopy(file, sourceProject, project);
+                            }
+                            return file;
+                        })
+                );
+        infinispanService.saveProjectFiles(filesMap);
+
+        if (!ConfigService.inKubernetes()) {
+            ProjectFile projectCompose = codeService.createInitialProjectCompose(project);
+            infinispanService.saveProjectFile(projectCompose);
+        } else if (kubernetesService.isOpenshift()){
+            ProjectFile projectCompose = codeService.createInitialDeployment(project);
+            infinispanService.saveProjectFile(projectCompose);
+        }
+
+        return project;
+    }
+
+    private void modifyPropertyFileOnProjectCopy(ProjectFile propertyFile, Project sourceProject, Project project) {
+        String fileContent = propertyFile.getCode();
+
+        String sourceProjectIdProperty = String.format(Property.PROJECT_ID.getKeyValueFormatter(), sourceProject.getProjectId());
+        String sourceProjectNameProperty = String.format(Property.PROJECT_NAME.getKeyValueFormatter(), sourceProject.getName());
+        String sourceProjectDescriptionProperty = String.format(Property.PROJECT_DESCRIPTION.getKeyValueFormatter(), sourceProject.getDescription());
+        String sourceGavProperty = String.format(Property.GAV.getKeyValueFormatter(), sourceProject.getProjectId());
+
+        String[] searchValues = {sourceProjectIdProperty, sourceProjectNameProperty, sourceProjectDescriptionProperty, sourceGavProperty};
+
+        String updatedProjectIdProperty = String.format(Property.PROJECT_ID.getKeyValueFormatter(), project.getProjectId());
+        String updatedProjectNameProperty = String.format(Property.PROJECT_NAME.getKeyValueFormatter(), project.getName());
+        String updatedProjectDescriptionProperty = String.format(Property.PROJECT_DESCRIPTION.getKeyValueFormatter(), project.getDescription());
+        String updatedGavProperty = String.format(Property.GAV.getKeyValueFormatter(), project.getProjectId());
+
+        String[] replacementValues = {updatedProjectIdProperty, updatedProjectNameProperty, updatedProjectDescriptionProperty, updatedGavProperty};
+
+        String updatedCode = StringUtils.replaceEach(fileContent, searchValues, replacementValues);
+
+        propertyFile.setCode(updatedCode);
+    }
+
     public Integer getProjectPort(String projectId) {
-        ProjectFile composeFile = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
-        return codeService.getProjectPort(composeFile);
+        return codeService.getProjectPort(projectId);
     }
 
     //    @Retry(maxRetries = 100, delay = 2000)
@@ -235,15 +288,10 @@ public class ProjectService implements HealthCheck {
         }
     }
 
-    public Project importProject(String projectId) {
+    public Project importProject(String projectId) throws Exception {
         LOGGER.info("Import project from Git " + projectId);
-        try {
-            GitRepo repo = gitService.readProjectFromRepository(projectId);
-            return importProjectFromRepo(repo);
-        } catch (Exception e) {
-            LOGGER.error("Error during project import", e);
-            return null;
-        }
+        GitRepo repo = gitService.readProjectFromRepository(projectId);
+        return importProjectFromRepo(repo);
     }
 
     private Project importProjectFromRepo(GitRepo repo) {
@@ -265,9 +313,14 @@ public class ProjectService implements HealthCheck {
     public Project getProjectFromRepo(GitRepo repo) {
         String folderName = repo.getName();
         String propertiesFile = codeService.getPropertiesFile(repo);
-        String projectName = codeService.getProjectName(propertiesFile);
-        String projectDescription = codeService.getProjectDescription(propertiesFile);
-        return new Project(folderName, projectName, projectDescription, repo.getCommitId(), repo.getLastCommitTimestamp());
+        if (propertiesFile != null) {
+            String projectName = codeService.getProjectName(propertiesFile);
+            String projectDescription = codeService.getProjectDescription(propertiesFile);
+            return new Project(folderName, projectName, projectDescription, repo.getCommitId(), repo.getLastCommitTimestamp());
+        } else {
+            return new Project(folderName, folderName, folderName, repo.getCommitId(), repo.getLastCommitTimestamp());
+        }
+
     }
 
     public Project commitAndPushProject(String projectId, String message) throws Exception {
@@ -341,24 +394,13 @@ public class ProjectService implements HealthCheck {
     }
 
     public void setProjectImage(String projectId, String imageName, boolean commit, String message) throws Exception {
-        ProjectFile file = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
-        if (file != null) {
-            DockerComposeService service = DockerComposeConverter.fromCode(file.getCode(), projectId);
-            service.setImage(imageName);
-            String code = DockerComposeConverter.toCode(service);
-            file.setCode(code);
-            infinispanService.saveProjectFile(file);
-            if (commit) {
-                commitAndPushProject(projectId, message);
-            }
+        codeService.updateDockerComposeImage(projectId, imageName);
+        if (commit) {
+            commitAndPushProject(projectId, message);
         }
     }
 
     public DockerComposeService getProjectDockerComposeService(String projectId) {
-        ProjectFile file = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
-        if (file != null) {
-            return DockerComposeConverter.fromCode(file.getCode(), projectId);
-        }
-        return null;
+        return codeService.getDockerComposeService(projectId);
     }
 }

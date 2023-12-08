@@ -108,7 +108,7 @@ const StepElements: string[] = [
     // "ErrorHandlerDefinition",
     "FilterDefinition",
     "IdempotentConsumerDefinition",
-    "KameletDefinition",
+    // "KameletDefinition",
     "LogDefinition",
     "LoopDefinition",
     "MarshalDefinition",
@@ -166,7 +166,16 @@ export class RouteToCreate {
 const INTEGRATION_PATTERNS = 'Integration Patterns';
 const connectorNavs = ['routing', "transformation", "error", "configuration", "endpoint", "kamelet", "component"];
 
+const stepConvertMap = new Map<string, string>([
+    ["SetBodyDefinition", "SetHeaderDefinition"],
+    ["SetHeaderDefinition", "SetBodyDefinition"],
+]);
+
 export class CamelUi {
+
+    static getConvertTargetDsl = (sourceDsl?: string): string | undefined => {
+        return sourceDsl ? stepConvertMap.get(sourceDsl) : undefined;
+    }
 
     static createNewInternalRoute = (uri: string): RouteToCreate | undefined => {
         const uris = uri.toString().split(":");
@@ -772,10 +781,18 @@ export class CamelUi {
         return result;
     }
 
+    static getRests = (integration: Integration): CamelElement[] => {
+        const result: CamelElement[] = [];
+        integration.spec.flows?.filter((e: any) => e.dslName === 'RestDefinition')
+            .forEach((f: any) => result.push(f));
+        return result;
+    }
+
     static getRouteConfigurations = (integration: Integration): RouteConfigurationDefinition[] | undefined => {
         const result: CamelElement[] = [];
         integration.spec.flows?.filter((e: any) => e.dslName === 'RouteConfigurationDefinition')
             .forEach((f: any) => result.push(f));
         return result;
     }
+
 }

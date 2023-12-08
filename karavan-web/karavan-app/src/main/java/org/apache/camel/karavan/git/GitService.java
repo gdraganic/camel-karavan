@@ -17,45 +17,37 @@
 package org.apache.camel.karavan.git;
 
 import io.fabric8.kubernetes.api.model.Secret;
+import io.quarkus.oidc.UserInfo;
+import io.quarkus.security.identity.SecurityIdentity;
 import io.smallrye.mutiny.tuples.Tuple2;
 import io.vertx.core.Vertx;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.apache.camel.karavan.git.model.GitConfig;
 import org.apache.camel.karavan.git.model.GitRepo;
 import org.apache.camel.karavan.git.model.GitRepoFile;
-import org.apache.camel.karavan.infinispan.model.*;
+import org.apache.camel.karavan.infinispan.model.Project;
+import org.apache.camel.karavan.infinispan.model.ProjectFile;
 import org.apache.camel.karavan.kubernetes.KubernetesService;
-import org.apache.camel.karavan.registry.RegistryConfig;
 import org.apache.camel.karavan.service.ConfigService;
-import org.eclipse.jgit.api.CheckoutCommand;
-import org.eclipse.jgit.api.CloneCommand;
-import org.eclipse.jgit.api.FetchCommand;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.PullCommand;
-import org.eclipse.jgit.api.PullResult;
-import org.eclipse.jgit.api.RemoteAddCommand;
+import org.eclipse.jgit.api.*;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.RefNotFoundException;
 import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.transport.CredentialsProvider;
-import org.eclipse.jgit.transport.FetchResult;
-import org.eclipse.jgit.transport.PushResult;
-import org.eclipse.jgit.transport.URIish;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.transport.*;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.jboss.logging.Logger;
 
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -69,6 +61,9 @@ public class GitService {
 
     @Inject
     KubernetesService kubernetesService;
+
+    @Inject
+    SecurityIdentity securityIdentity;
 
     private Git gitForImport;
 
@@ -171,13 +166,8 @@ public class GitService {
         return new ArrayList<>(0);
     }
 
-    public GitRepo readProjectFromRepository(String projectId) {
-        Git git = null;
-        try {
-            git = getGit(true, vertx.fileSystem().createTempDirectoryBlocking(UUID.randomUUID().toString()));
-        } catch (Exception e) {
-            LOGGER.error("Error", e);
-        }
+    public GitRepo readProjectFromRepository(String projectId) throws GitAPIException, IOException, URISyntaxException {
+        Git git = getGit(true, vertx.fileSystem().createTempDirectoryBlocking(UUID.randomUUID().toString()));
         return readProjectsFromRepository(git, projectId).get(0);
     }
 
@@ -316,11 +306,19 @@ public class GitService {
     public RevCommit commitAddedAndPush(Git git, String branch, CredentialsProvider cred, String message) throws GitAPIException {
         LOGGER.info("Commit and push changes");
         LOGGER.info("Git add: " + git.add().addFilepattern(".").call());
-        RevCommit commit = git.commit().setMessage(message).call();
+        RevCommit commit = git.commit().setMessage(message).setAuthor(getPersonIdent()).call();
         LOGGER.info("Git commit: " + commit);
         Iterable<PushResult> result = git.push().add(branch).setRemote("origin").setCredentialsProvider(cred).call();
         LOGGER.info("Git push: " + result);
         return commit;
+    }
+
+    private PersonIdent getPersonIdent() {
+        if (securityIdentity != null && securityIdentity.getAttributes().get("userinfo") != null) {
+            UserInfo userInfo = (UserInfo) securityIdentity.getAttributes().get("userinfo");
+            return new PersonIdent(securityIdentity.getPrincipal().getName(), userInfo.getEmail());
+        }
+        return new PersonIdent("karavan", "karavan@test.org");
     }
 
     public Git init(String dir, String uri, String branch) throws GitAPIException, IOException, URISyntaxException {

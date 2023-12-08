@@ -41,6 +41,7 @@ import {
     SelectOption
 } from '@patternfly/react-core/deprecated';
 import '../../karavan.css';
+import './DslPropertyField.css';
 import "@patternfly/patternfly/patternfly.css";
 import HelpIcon from "@patternfly/react-icons/dist/js/icons/help-icon";
 import DeleteIcon from "@patternfly/react-icons/dist/js/icons/times-circle-icon";
@@ -120,8 +121,9 @@ export function DslPropertyField(props: Props) {
 
     function arrayChanged(fieldId: string, value: string) {
         setArrayValues(prevState => {
-            prevState.set(fieldId, value);
-            return prevState;
+            const map: Map<string,string> = new Map<string, string>(prevState);
+            map.set(fieldId, value);
+            return map;
         })
     }
 
@@ -375,14 +377,39 @@ export function DslPropertyField(props: Props) {
     }
 
     function getSwitch(property: PropertyMeta, value: any) {
-        const isChecked = value !== undefined ? Boolean(value) : Boolean(property.defaultValue !== undefined && property.defaultValue === 'true');
+        const isValueBoolean = (value === true || value === false);
+        const isDisabled = value !== undefined && !isValueBoolean;
+        let isChecked = false;
+        if (value !== undefined && isValueBoolean) {
+            isChecked = Boolean(value);
+        } else if ((value === undefined || value.toString().length > 0) && property.defaultValue !== undefined) {
+            isChecked = property.defaultValue === 'true';
+        }
         return (
-            <Switch
-                id={property.name} name={property.name}
-                value={value?.toString()}
-                aria-label={property.name}
-                isChecked={isChecked}
-                onChange={(_, v) => propertyChanged(property.name, v)}/>
+            <TextInputGroup className="input-group">
+                <InputGroupItem>
+                    <Switch
+                        isDisabled={isDisabled}
+                        id={property.name + "-switch"}
+                        name={property.name + "-switch"}
+                        className="switch-placeholder"
+                        value={value?.toString()}
+                        aria-label={property.name}
+                        isChecked={isChecked}
+                        onChange={(_, v) => propertyChanged(property.name, v)}/>
+                </InputGroupItem>
+                {property.placeholder && <InputGroupItem isFill>
+                    <TextInput
+                        id={property.name + "-placeholder"}
+                        name={property.name + "-placeholder"}
+                        type="text"
+                        aria-label="placeholder"
+                        placeholder="Property placeholder"
+                        value={!isValueBoolean ? value?.toString() : undefined}
+                        onChange={(_, v) => propertyChanged(property.name, v)}
+                    />
+                </InputGroupItem>}
+            </TextInputGroup>
         )
     }
 
@@ -602,9 +629,11 @@ export function DslPropertyField(props: Props) {
             <div>
                 <TextInputGroup className="input-group">
                     <TextInputGroupMain value={arrayValues.get(property.name)}
-                                        onChange={(e, v) => arrayChanged(property.name, v)} onKeyUp={e => {
-                        if (e.key === 'Enter') arraySave(property.name)
-                    }}>
+                                        onChange={(e, v) => arrayChanged(property.name, v)}
+                                        onKeyUp={e => {
+                                            if (e.key === 'Enter') arraySave(property.name)
+                                        }}
+                    >
                         <ChipGroup>
                             {value && Array.from(value).map((v: any, index: number) => (
                                 <Chip key={"chip-" + index} className="chip"
@@ -654,6 +683,7 @@ export function DslPropertyField(props: Props) {
             </div>
         )
     }
+
     function getExpandableComponentParameters(properties: ComponentProperty[], label: string) {
         const element = props.element;
 
@@ -665,7 +695,7 @@ export function DslPropertyField(props: Props) {
                         if (isExpanded && !isShowAdvanced.includes(label)) {
                             prevState = [...prevState, label]
                         } else {
-                            prevState = prevState.filter(s => s!== label);
+                            prevState = prevState.filter(s => s !== label);
                         }
                         return prevState;
                     })

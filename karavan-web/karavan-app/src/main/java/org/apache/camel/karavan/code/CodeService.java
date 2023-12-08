@@ -31,11 +31,11 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.generator.openapi.RestDslGenerator;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.karavan.api.KameletResources;
-import org.apache.camel.karavan.docker.DockerService;
 import org.apache.camel.karavan.code.model.DockerComposeService;
-import org.apache.camel.karavan.infinispan.InfinispanService;
+import org.apache.camel.karavan.docker.DockerService;
 import org.apache.camel.karavan.git.model.GitRepo;
 import org.apache.camel.karavan.git.model.GitRepoFile;
+import org.apache.camel.karavan.infinispan.InfinispanService;
 import org.apache.camel.karavan.infinispan.model.Project;
 import org.apache.camel.karavan.infinispan.model.ProjectFile;
 import org.apache.camel.karavan.kubernetes.KubernetesService;
@@ -46,9 +46,6 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -61,8 +58,10 @@ public class CodeService {
     public static final String BUILD_SCRIPT_FILENAME = "build.sh";
     public static final String DEV_SERVICES_FILENAME = "devservices.yaml";
     public static final String PROJECT_COMPOSE_FILENAME = "docker-compose.yaml";
-    public static final String PROJECT_DEPLOYMENT_JKUBE_FILENAME = "deployment.jkube.yaml";
+    public static final String PROJECT_JKUBE_EXTENSION = ".jkube.yaml";
+    public static final String PROJECT_DEPLOYMENT_JKUBE_FILENAME = "deployment" + PROJECT_JKUBE_EXTENSION;
     private static final String SNIPPETS_PATH = "/snippets/";
+    private static final String DATA_FOLDER = System.getProperty("user.dir") + File.separator + "data";
     private static final int INTERNAL_PORT = 8080;
 
     @Inject
@@ -90,9 +89,10 @@ public class CodeService {
             "limits.cpu", "2000m"
     );
 
-    public Map<String, String> getProjectFiles(String projectId, Boolean withKamelets) {
+    public Map<String, String> getProjectFilesForDevMode(String projectId, Boolean withKamelets) {
         Map<String, String> files = infinispanService.getProjectFiles(projectId).stream()
                 .filter(f -> !Objects.equals(f.getName(), PROJECT_COMPOSE_FILENAME))
+                .filter(f -> !f.getName().endsWith(PROJECT_JKUBE_EXTENSION))
                 .collect(Collectors.toMap(ProjectFile::getName, ProjectFile::getCode));
 
         if (withKamelets) {
@@ -258,7 +258,7 @@ public class CodeService {
                 .data("projectId", project.getProjectId())
                 .data("projectPort", port)
                 .data("projectImage", project.getProjectId());
-        String code =  instance.render();
+        String code = instance.render();
         return new ProjectFile(PROJECT_COMPOSE_FILENAME, code, project.getProjectId(), Instant.now().toEpochMilli());
     }
 
@@ -294,11 +294,63 @@ public class CodeService {
         return port.orElse(null);
     }
 
+    public Integer getProjectPort(String projectId) {
+        ProjectFile composeFile = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
+        return getProjectPort(composeFile);
+    }
+
 
     public DockerComposeService getInternalDockerComposeService (String name) {
         String composeText = getResourceFile("/services/internal.yaml");
         return DockerComposeConverter.fromCode(composeText, name);
     }
 
+    public DockerComposeService getDockerComposeService(String projectId) {
+        ProjectFile compose = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
+        if (compose != null) {
+            return DockerComposeConverter.fromCode(compose.getCode(), projectId);
+        }
+        return null;
+    }
+
+    public void updateDockerComposeImage(String projectId, String imageName) {
+        ProjectFile compose = infinispanService.getProjectFile(projectId, PROJECT_COMPOSE_FILENAME);
+        if (compose != null) {
+            DockerComposeService service = DockerComposeConverter.fromCode(compose.getCode(), projectId);
+            service.setImage(imageName);
+            String code = DockerComposeConverter.toCode(service);
+            compose.setCode(code);
+            infinispanService.saveProjectFile(compose);
+        }
+    }
+
+    public List<String> getComposeEnvironmentVariables(String projectId) {
+        DockerComposeService compose = getDockerComposeService(projectId);
+        return getComposeEnvironmentVariables(compose);
+    }
+
+    public List<String> getComposeEnvironmentVariables(DockerComposeService compose) {
+        List<String> vars = new ArrayList<>();
+        if (compose.getEnv_file() != null && !compose.getEnv_file().isEmpty()) {
+            compose.getEnv_file().forEach(name -> {
+                String file = getDataFile(name);
+                vars.addAll(getEnvironmentVariablesFromString(file));
+            });
+        }
+        return vars;
+    }
+
+    private List<String> getEnvironmentVariablesFromString(String file) {
+        List<String> vars = new ArrayList<>();
+        if (file != null) {
+            vars = file.lines().collect(Collectors.toList());
+        }
+        return vars;
+    }
+
+    public String getDataFile(String name) {
+        String fileName = DATA_FOLDER + File.separator + name;
+        return vertx.fileSystem().readFileBlocking(fileName).toString();
+    }
 
 }

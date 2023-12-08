@@ -140,7 +140,8 @@ public class InfrastructureResource {
                 return Response.ok(kubernetesService.getServices(kubernetesService.getNamespace())).build();
             } else {
                 List<String> list = infinispanService.getContainerStatuses(environment).stream()
-                        .map(ci -> ci.getPorts().stream().map(i -> ci.getContainerName() + ":" + i).collect(Collectors.toList()))
+                        .filter(ci -> !ci.getPorts().isEmpty())
+                        .map(ci -> ci.getPorts().stream().map(i -> ci.getContainerName() + "|" + ci.getContainerName() + ":" + i.getPrivatePort()).collect(Collectors.toList()))
                         .flatMap(List::stream).collect(Collectors.toList());
                 return Response.ok(list).build();
             }

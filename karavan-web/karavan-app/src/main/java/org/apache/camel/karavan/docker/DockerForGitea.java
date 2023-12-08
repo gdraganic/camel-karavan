@@ -20,11 +20,10 @@ import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.model.Container;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.apache.camel.karavan.infinispan.model.ContainerStatus;
-import org.apache.camel.karavan.git.model.GitConfig;
 import org.apache.camel.karavan.code.CodeService;
 import org.apache.camel.karavan.git.GitService;
-import org.apache.camel.karavan.git.GiteaService;
+import org.apache.camel.karavan.git.model.GitConfig;
+import org.apache.camel.karavan.infinispan.model.ContainerStatus;
 import org.jboss.logging.Logger;
 
 @ApplicationScoped
@@ -38,9 +37,6 @@ public class DockerForGitea {
     DockerService dockerService;
 
     @Inject
-    GiteaService giteaService;
-
-    @Inject
     GitService gitService;
 
     @Inject
@@ -50,7 +46,7 @@ public class DockerForGitea {
         try {
             LOGGER.info("Gitea container is starting...");
             var compose = codeService.getInternalDockerComposeService(GITEA_CONTAINER_NAME);
-            Container c = dockerService.createContainerFromCompose(compose, ContainerStatus.ContainerType.internal);
+            Container c = dockerService.createContainerFromCompose(compose, ContainerStatus.ContainerType.internal, false);
             dockerService.runContainer(GITEA_CONTAINER_NAME);
             LOGGER.info("Gitea container is started");
         } catch (Exception e) {

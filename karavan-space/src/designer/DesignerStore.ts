@@ -134,6 +134,8 @@ export const useConnectionsStore = createWithEqualityFn<ConnectionsState>((set) 
             // state.steps.clear();
             Array.from(state.steps.entries())
                 .filter(value => value[1]?.parent?.uuid !== uuid)
+                .filter(value => value[1]?.prevStep?.uuid !== uuid)
+                .filter(value => value[1]?.nextstep?.uuid !== uuid)
                 .forEach(value => state.steps.set(value[0], value[1]));
             state.steps.delete(uuid)
             return state;
@@ -147,7 +149,7 @@ export const useConnectionsStore = createWithEqualityFn<ConnectionsState>((set) 
     },
     setSteps: (steps: Map<string, DslPosition>) => {
         set({steps: steps})
-    },
+    }
 }), shallow)
 
 type DesignerState = {

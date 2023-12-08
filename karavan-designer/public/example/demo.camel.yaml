@@ -1,77 +1,131 @@
 - route:
-    id: route-612d
+    nodePrefixId: route-1e7
+    id: route-3f85
     from:
-      uri: kamelet:aws-s3-cdc-source
-      id: from-e37e
-- route:
-    id: route-605c
-    from:
-      uri: activemq
-      id: from-3131
-      parameters:
-        destinationName: test
+      uri: timer
+      id: from-cfa5
       steps:
-        - marshal:
-            id: marshal-1452
-        - log:
-            message: ${body}
-            id: log-c8e7
+        - choice:
+            when:
+              - expression:
+                  simple:
+                    id: simple-99bf
+                id: when-ab5e
+                steps:
+                  - to:
+                      uri: arangodb
+                      id: to-f70a
+                  - removeProperties:
+                      id: removeProperties-344a
+              - expression:
+                  simple:
+                    id: simple-d199
+                id: when-37cd
+                steps:
+                  - to:
+                      uri: amqp
+                      id: to-fbfe
+                  - choice:
+                      when:
+                        - expression:
+                            simple:
+                              id: simple-e78b
+                          id: when-b7d0
+                      otherwise:
+                        id: otherwise-40d0
+                      id: choice-8f6b
+            otherwise:
+              id: otherwise-382c
+              steps:
+                - log:
+                    message: ${body}
+                    id: log-6831
+            id: choice-c1db
+        - saga:
+            id: saga-8f2c
+            steps:
+              - to:
+                  uri: kamelet:azure-cosmosdb-sink
+                  id: to-1394
 - route:
-    id: route-e4bb
+    nodePrefixId: route-171
+    id: route-99f9
     from:
-      uri: kamelet:timer-source
-      id: from-dd68
-      parameters:
-        message: '1111'
+      uri: kamelet:azure-storage-blob-source
+      id: from-f8e9
       steps:
-        - to:
-            uri: activemq
-            id: to-4fca
-            parameters:
-              destinationName: test
-- route:
-    id: route-0a30
-    from:
-      uri: amqp
-      id: from-ca7d
-      parameters:
-        destinationName: hello
-      steps:
-        - log:
-            message: ${body}
-            id: log-d0f4
-        - to:
-            uri: kamelet:kafka-not-secured-sink
-            id: to-c86f
-            parameters:
-              topic: topic1
-              bootstrapServers: localhost:9092
-- route:
-    id: route-e39c
-    from:
-      uri: kamelet:kafka-not-secured-source
-      id: from-d419
-      parameters:
-        bootstrapServers: localhost:9092
-        topic: topic1
-      steps:
-        - to:
-            uri: direct
-            id: to-7401
-            parameters:
-              name: hello
-- route:
-    id: route-be79
-    from:
-      uri: kamelet:kafka-not-secured-source
-      id: from-27e8
-      parameters:
-        bootstrapServers: localhost:9092
-        topic: topic2
-- route:
-    id: hello
-    from:
-      uri: direct
-      id: from-db43
-      parameters:
-        name: hello
+        - multicast:
+            id: multicast-6a53
+            steps:
+              - log:
+                  message: ${body}
+                  id: log-799d
+              - log:
+                  message: ${body}
+                  id: log-fc8e
+              - log:
+                  message: ${body}
+                  id: log-1e42
+        - filter:
+            expression:
+              simple:
+                id: simple-7ff9
+            id: filter-8c99
+            steps:
+              - process:
+                  id: process-e1c1
+                  description: Call cutom java bean
+              - delay:
+                  expression:
+                    simple:
+                      id: simple-64a6
+                  id: delay-b1ec
+        - doTry:
+            id: doTry-46cd
+            doCatch:
+              - id: doCatch-c6e7
+                steps:
+                  - log:
+                      message: ${body}
+                      id: log-77df
+                  - choice:
+                      when:
+                        - expression:
+                            simple:
+                              id: simple-c7db
+                          id: when-f058
+                      otherwise:
+                        id: otherwise-1e11
+                      id: choice-8374
+                  - wireTap:
+                      id: wireTap-a25e
+            doFinally:
+              id: doFinally-0a65
+              steps:
+                - log:
+                    message: ${body}
+                    id: log-f4fa
+                - log:
+                    message: ${body}
+                    id: log-cd30
+            steps:
+              - pollEnrich:
+                  expression:
+                    simple:
+                      id: simple-6181
+                  id: pollEnrich-a41b
+              - filter:
+                  expression:
+                    simple:
+                      id: simple-a69b
+                  id: filter-07cf
+                  steps:
+                    - setBody:
+                        expression:
+                          simple:
+                            id: simple-f0dc
+                        id: setBody-3c0c
+              - process:
+                  id: process-6d06
+        - circuitBreaker:
+            id: circuitBreaker-4af8

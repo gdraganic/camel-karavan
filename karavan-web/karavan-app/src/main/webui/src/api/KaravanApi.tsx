@@ -36,9 +36,12 @@ const instance = axios.create();
 export class KaravanApi {
 
     static me?: any;
-    static basicToken: string = '';
     static authType?: string = undefined;
     static isAuthorized: boolean = false;
+
+    static getInstance() {
+        return instance;
+    }
 
     static setAuthType(authType: string) {
         KaravanApi.authType = authType;
@@ -51,24 +54,12 @@ export class KaravanApi {
                 KaravanApi.setOidcAuthentication();
                 break;
             }
-            case "basic": {
-                KaravanApi.setBasicAuthentication();
-                break;
-            }
         }
     }
     static setPublicAuthentication() {
 
     }
-    static setBasicAuthentication() {
-        instance.interceptors.request.use(async config => {
-                config.headers.Authorization = 'Basic ' + KaravanApi.basicToken;
-                return config;
-            },
-            error => {
-                Promise.reject(error)
-            });
-    }
+
     static setOidcAuthentication() {
         instance.interceptors.request.use(async config => {
                 config.headers.Authorization = 'Bearer ' + SsoApi.keycloak?.token;
@@ -137,20 +128,6 @@ export class KaravanApi {
         });
     }
 
-    static async auth(username: string, password: string, after: (res: any) => void) {
-        KaravanApi.basicToken = Buffer.from(username + ":" + password).toString('base64');
-        instance.get('/api/users/me')
-            .then(res => {
-                if (res.status === 200) {
-                    KaravanApi.isAuthorized = true;
-                    KaravanApi.me = res.data;
-                    after(res);
-                }
-            }).catch(err => {
-            console.log(err);
-        });
-    }
-
     static async getMe(after: (user: {}) => void) {
         instance.get('/api/users/me')
             .then(res => {
@@ -165,6 +142,17 @@ export class KaravanApi {
 
     static async getConfiguration(after: (config: AppConfig) => void) {
         instance.get('/api/configuration')
+            .then(res => {
+                if (res.status === 200) {
+                    after(res.data);
+                }
+            }).catch(err => {
+            console.log(err);
+        });
+    }
+
+    static async getInfrastructureInfo(after: (info: any) => void) {
+        instance.get('/api/configuration/info')
             .then(res => {
                 if (res.status === 200) {
                     after(res.data);
@@ -209,8 +197,8 @@ export class KaravanApi {
         });
     }
 
-    static async getAllCamelContextStatuses(env: string, after: (statuses: CamelStatus[]) => void) {
-        instance.get('/api/status/camel/context/' + env)
+    static async getAllCamelContextStatuses(after: (statuses: CamelStatus[]) => void) {
+        instance.get('/api/status/camel/context')
             .then(res => {
                 if (res.status === 200) {
                     after(res.data);
@@ -306,14 +294,12 @@ export class KaravanApi {
         });
     }
 
-    static async pull(projectId: string, after: (res: AxiosResponse<any>) => void) {
-        instance.get('/api/git/' + projectId)
+    static async pull(projectId: string, after: (res: AxiosResponse<any> | any) => void) {
+        instance.put('/api/git/' + projectId)
             .then(res => {
-                if (res.status === 200) {
-                    after(res.data);
-                }
+                after(res);
             }).catch(err => {
-            console.log(err);
+            after(err);
         });
     }
 
@@ -475,12 +461,13 @@ export class KaravanApi {
         });
     }
 
-    static async manageContainer(environment: string,
+    static async manageContainer(projectId: string,
                                  type: 'devmode' | 'devservice' | 'project' | 'internal' | 'build' | 'unknown',
                                  name: string,
-                                 command: 'run' | 'pause' | 'stop' | 'delete',
-                                 after: (res: AxiosResponse<any>) => void) {
-        instance.post('/api/container/' + environment + '/' + type + "/" + name, {command: command})
+                                 command: 'deploy' | 'run' | 'pause' | 'stop' | 'delete',
+                                 pullImage: boolean,
+                                 after: (res: AxiosResponse<any> | any) => void) {
+        instance.post('/api/container/' + projectId + '/' + type + "/" + name, {command: command, pullImage: pullImage})
             .then(res => {
                 after(res);
             }).catch(err => {
@@ -488,8 +475,8 @@ export class KaravanApi {
         });
     }
 
-    static async deleteContainer(environment: string, type: 'devmode' | 'devservice' | 'project' | 'internal' | 'build' | 'unknown', name: string, after: (res: AxiosResponse<any>) => void) {
-        instance.delete('/api/container/' + environment + '/' + type + "/" + name)
+    static async deleteContainer(projectId: string, type: 'devmode' | 'devservice' | 'project' | 'internal' | 'build' | 'unknown', name: string, after: (res: AxiosResponse<any>) => void) {
+        instance.delete('/api/container/' + projectId + '/' + type + "/" + name)
             .then(res => {
                 after(res);
             }).catch(err => {
@@ -629,11 +616,13 @@ export class KaravanApi {
 
     static async fetchData(type: 'container' | 'build' | 'none', podName: string, controller: AbortController) {
         const fetchData = async () => {
+            const headers: any = { Accept: "text/event-stream" };
+            if (KaravanApi.authType === 'oidc') {
+                headers.Authorization = "Bearer " + SsoApi.keycloak?.token
+            }
             await fetchEventSource("/api/logwatch/" + type + "/" + podName, {
                 method: "GET",
-                headers: {
-                    Accept: "text/event-stream",
-                },
+                headers: headers,
                 signal: controller.signal,
                 async onopen(response) {
                     if (response.ok && response.headers.get('content-type') === EventStreamContentType) {
@@ -659,4 +648,3 @@ export class KaravanApi {
         return fetchData();
     }
 }
-

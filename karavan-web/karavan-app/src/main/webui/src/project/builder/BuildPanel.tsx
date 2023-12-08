@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     Button,
     DescriptionList,
@@ -34,6 +34,7 @@ import DeleteIcon from "@patternfly/react-icons/dist/esm/icons/times-circle-icon
 import {useAppConfigStore, useLogStore, useProjectStore, useStatusesStore} from "../../api/ProjectStore";
 import {shallow} from "zustand/shallow";
 import {EventBus} from "../../designer/utils/EventBus";
+import {ProjectService} from "../../api/ProjectService";
 
 export function BuildPanel () {
 
@@ -53,7 +54,7 @@ export function BuildPanel () {
     function deleteEntity() {
         const buildName = getBuildName();
         if (buildName) {
-            KaravanApi.manageContainer(config.environment, 'build', buildName, 'delete', res => {
+            KaravanApi.manageContainer(project.projectId, 'build', buildName, 'delete', false,res => {
                 EventBus.sendAlert("Container deleted", "Container " + buildName + " deleted", 'info')
                 setShowLog(false, 'container', undefined)
             });

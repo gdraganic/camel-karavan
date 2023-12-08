@@ -27,7 +27,7 @@ import {DslSelector} from "./DslSelector";
 import {DslProperties} from "./DslProperties";
 import {DslConnections} from "./DslConnections";
 import PlusIcon from "@patternfly/react-icons/dist/esm/icons/plus-icon";
-import {DslElement} from "./DslElement";
+import {DslElement} from "./element/DslElement";
 import {CamelUi} from "../utils/CamelUi";
 import {useRouteDesignerHook} from "./useRouteDesignerHook";
 import {useConnectionsStore, useDesignerStore, useIntegrationStore, useSelectorStore} from "../DesignerStore";
@@ -36,7 +36,7 @@ import useResizeObserver from "./useResizeObserver";
 import {Command, EventBus} from "../utils/EventBus";
 import useMutationsObserver from "./useDrawerMutationsObserver";
 import {DeleteConfirmation} from "./DeleteConfirmation";
-import {DslElementMoveModal} from "./DslElementMoveModal";
+import {DslElementMoveModal} from "./element/DslElementMoveModal";
 
 export function RouteDesigner() {
 
@@ -147,20 +147,28 @@ export function RouteDesigner() {
                      data-click="FLOWS"
                      onClick={event => {unselectElement(event)}}
                      ref={flowRef}>
-                    {routeConfigurations?.map((routeConfiguration, index: number) => (
+                    {routeConfigurations?.map((routeConfiguration, index: number, array) => (
                         <DslElement key={routeConfiguration.uuid}
                                     inSteps={false}
                                     position={index}
                                     step={routeConfiguration}
+                                    nextStep={undefined}
+                                    prevStep={undefined}
+                                    inStepsLength={array.length}
                                     parent={undefined}/>
                     ))}
-                    {routes?.map((route: any, index: number) => (
-                        <DslElement key={route.uuid}
-                                    inSteps={false}
-                                    position={index}
-                                    step={route}
-                                    parent={undefined}/>
-                    ))}
+                    {routes?.map((route: any, index: number, array) => {
+                        return (
+                            <DslElement key={route.uuid}
+                                        inSteps={false}
+                                        position={index}
+                                        step={route}
+                                        nextStep={undefined}
+                                        prevStep={undefined}
+                                        inStepsLength={array.length}
+                                        parent={undefined}/>
+                        )
+                    })}
                     {getGraphButtons()}
                 </div>
             </div>)

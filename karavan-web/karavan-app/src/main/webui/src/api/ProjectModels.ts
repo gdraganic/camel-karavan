@@ -16,6 +16,7 @@
  */
 
 export class AppConfig {
+    title: string = '';
     version: string = '';
     infrastructure: 'kubernetes' | 'docker' | 'local' = 'local';
     environment: string = '';
@@ -28,6 +29,7 @@ export enum ProjectType {
     kamelets ='kamelets',
     services ='services',
     normal ='normal',
+    ephemeral ='ephemeral',
 }
 
 export class Project {
@@ -78,6 +80,12 @@ export class ServiceStatus {
     type: string = '';
 }
 
+export class ContainerPort {
+    privatePort?: number;
+    publicPort?: number;
+    type: string = '';
+}
+
 export class ContainerStatus {
     containerName: string = '';
     containerId: string = '';
@@ -92,9 +100,10 @@ export class ContainerStatus {
     created: string = '';
     finished: string = '';
     image: string = '';
-    ports: [] = [];
+    ports: ContainerPort [] = [];
     commands: string [] = [];
     inTransit: boolean = false;
+    camelRuntime: string = ''
 
     public constructor(init?: Partial<ContainerStatus>) {
         Object.assign(this, init);
@@ -147,9 +156,7 @@ export const ProjectFileTypes: ProjectFileType[] = [
     new ProjectFileType("PROPERTIES", "Properties", "properties"),
     new ProjectFileType("JSON", "JSON", "json"),
     new ProjectFileType("YAML", "YAML", "yaml"),
-    new ProjectFileType("LOG", "Log", "log"),
     new ProjectFileType("SH", "Script", "sh"),
-    new ProjectFileType("SQL", "SQL", "sql"),
     new ProjectFileType("OTHER", "Other", "*"),
 ];
 

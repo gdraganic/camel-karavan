@@ -21,18 +21,16 @@ import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.Event;
 import com.github.dockerjava.api.model.EventType;
-import io.vertx.core.eventbus.EventBus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.camel.karavan.infinispan.InfinispanService;
 import org.apache.camel.karavan.infinispan.model.ContainerStatus;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.apache.camel.karavan.registry.RegistryService;
 import org.jboss.logging.Logger;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Objects;
-import java.util.Optional;
 
 import static org.apache.camel.karavan.shared.Constants.*;
 
@@ -43,7 +41,7 @@ public class DockerEventListener implements ResultCallback<Event> {
     DockerService dockerService;
 
     @Inject
-    DockerForKaravan dockerForKaravan;
+    RegistryService registryService;
 
     @Inject
     InfinispanService infinispanService;
@@ -75,9 +73,14 @@ public class DockerEventListener implements ResultCallback<Event> {
                     && Objects.equals(container.getLabels().get(LABEL_TYPE), ContainerStatus.ContainerType.build.name())) {
                 String tag = container.getLabels().get(LABEL_TAG);
                 String projectId = container.getLabels().get(LABEL_PROJECT_ID);
-                dockerForKaravan.syncImage(projectId, tag);
+                syncImage(projectId, tag);
             }
         }
+    }
+
+    private void syncImage(String projectId, String tag) throws InterruptedException {
+        String image = registryService.getRegistryWithGroupForSync() + "/" + projectId + ":" + tag;
+        dockerService.pullImage(image, true);
     }
 
     @Override
@@ -94,6 +97,4 @@ public class DockerEventListener implements ResultCallback<Event> {
     public void close() throws IOException {
         LOGGER.info("DockerEventListener close");
     }
-
-
 }

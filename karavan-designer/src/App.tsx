@@ -81,8 +81,8 @@ class App extends React.Component<Props, State> {
             fetch("components/components.json"),
             fetch("snippets/org.apache.camel.AggregationStrategy"),
             fetch("snippets/org.apache.camel.Processor"),
-            // fetch("example/demo.camel.yaml")
-            fetch("example/aws-cloudwatch-sink.kamelet.yaml")
+            fetch("example/demo.camel.yaml")
+            // fetch("example/aws-cloudwatch-sink.kamelet.yaml")
             // fetch("example/aws-s3-cdc-source.kamelet.yaml")
             // fetch("components/supported-components.json"),
         ]).then(responses =>
@@ -102,8 +102,8 @@ class App extends React.Component<Props, State> {
             TemplateApi.saveTemplate("org.apache.camel.Processor", data[3]);
 
             if (data[4]) {
-                // this.setState({yaml: data[4], name: "demo.camel.yaml"})
-                this.setState({yaml: data[4], name: "aws-s3-cdc-source.kamelet.yaml"})
+                this.setState({yaml: data[4], name: "demo.camel.yaml"})
+                // this.setState({yaml: data[4], name: "aws-s3-cdc-source.kamelet.yaml"})
             }
 
             if (data[5]) {
@@ -183,7 +183,9 @@ class App extends React.Component<Props, State> {
                     <TopologyTab
                         files={this.getIntegrationFiles()}
                         onSetFile={fileName => {}}
-                        onClickCreateButton={() => {}}
+                        onClickAddRoute={() => {}}
+                        onClickAddREST={() => {}}
+                        onClickAddBean={() => {}}
                         hideToolbar={false}
                     />
                 )

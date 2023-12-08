@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     Bullseye,
     EmptyState, EmptyStateIcon, EmptyStateVariant,
@@ -28,6 +28,7 @@ import {
     ToolbarItem, EmptyStateHeader
 } from '@patternfly/react-core';
 import '../designer/karavan.css';
+import './ContainerPage.css';
 import {ContainerStatus} from "../api/ProjectModels";
 import {
 	TableVariant,
@@ -45,27 +46,21 @@ import {MainToolbar} from "../designer/MainToolbar";
 import {useAppConfigStore, useStatusesStore} from "../api/ProjectStore";
 import {shallow} from "zustand/shallow";
 import {ContainerTableRow} from "./ContainerTableRow";
+import {ProjectService} from "../api/ProjectService";
 
 export function ContainersPage () {
 
-    const [config] = useAppConfigStore((state) => [state.config], shallow)
+    const [config, selectedEnv, selectEnvironment] = useAppConfigStore((state) => [state.config,state.selectedEnv, state.selectEnvironment], shallow)
     const [containers] = useStatusesStore((state) => [state.containers, state.setContainers], shallow);
     const [filter, setFilter] = useState<string>('');
     const [loading] = useState<boolean>(true);
-    const [selectedEnv, setSelectedEnv] = useState<string[]>([config.environment]);
 
-    function selectEnvironment(name: string, selected: boolean) {
-        if (selected && !selectedEnv.includes(name)) {
-            setSelectedEnv((state: string[]) => {
-                state.push(name);
-                return state;
-            })
-        } else if (!selected && selectedEnv.includes(name)) {
-            setSelectedEnv((state: string[]) => {
-                return state.filter(e => e !== name)
-            })
-        }
-    }
+    useEffect(() => {
+        const interval = setInterval(() => {
+            ProjectService.refreshAllContainerStatuses();
+        }, 1000)
+        return () => clearInterval(interval);
+    }, []);
 
     function tools() {
         return (<Toolbar id="toolbar-group-types">
@@ -94,18 +89,6 @@ export function ContainersPage () {
         </TextContent>);
     }
 
-    function getSelectedEnvironments(): string [] {
-        return config.environments.filter(e => selectedEnv.includes(e));
-    }
-
-    function getContainerByEnvironments(name: string): [string, ContainerStatus | undefined] [] {
-        return selectedEnv.map(e => {
-            const env: string = e as string;
-            const container = containers.find(d => d.containerName === name && d.env === env);
-            return [env, container];
-        });
-    }
-
     function getEmptyState() {
         return (
             <Tbody>
@@ -125,28 +108,30 @@ export function ContainersPage () {
         )
     }
 
-    const conts = containers.filter(d => d.containerName.toLowerCase().includes(filter));
+    const conts = containers
+        .filter(c => selectedEnv.includes(c.env))
+        .filter(d => d.containerName.toLowerCase().includes(filter));
     return (
-        <PageSection className="kamelet-section dashboard-page" padding={{default: 'noPadding'}}>
+        <PageSection className="container-page" padding={{default: 'noPadding'}}>
             <PageSection className="tools-section" padding={{default: 'noPadding'}}>
                 <MainToolbar title={title()} tools={tools()}/>
             </PageSection>
-            <PageSection isFilled className="kamelets-page">
+            <PageSection isFilled className="container-page-section">
                 <Table aria-label="Projects" variant={TableVariant.compact}>
                     <Thead>
                         <Tr>
-                            <Th />
-                            <Th key='type'>Type</Th>
-                            <Th key='name'>Name</Th>
-                            <Th key='image'>Image</Th>
-                            <Th key='cpuInfo'>CPU</Th>
-                            <Th key='memoryInfo'>Memory</Th>
-                            <Th key='state'>State</Th>
-                            <Th  key='action'></Th>
+                            <Th modifier="fitContent" textCenter={true} />
+                            <Th modifier="fitContent" textCenter={true} key='env'>Env</Th>
+                            <Th modifier="fitContent" textCenter={true} key='type'>Type</Th>
+                            <Th  key='name'>Name</Th>
+                            <Th modifier="fitContent" textCenter={true} key='cpuInfo'>CPU</Th>
+                            <Th modifier="fitContent" textCenter={true} key='memoryInfo'>Memory</Th>
+                            <Th modifier="fitContent" textCenter={true} key='state'>State</Th>
+                            <Th modifier="fitContent" textCenter={true} key='action'>Actions</Th>
                         </Tr>
                     </Thead>
                     {conts?.map((container: ContainerStatus, index: number) => (
-                        <ContainerTableRow key={container.containerName} index={index} container={container}/>
+                        <ContainerTableRow key={`${container.containerName}-${container.env}`} index={index} container={container}/>
                     ))}
                     {conts?.length === 0 && getEmptyState()}
                 </Table>

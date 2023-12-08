@@ -36,6 +36,9 @@ interface AppConfigState {
     setConfig: (config: AppConfig) => void;
     readiness: any;
     setReadiness: (readiness: any) => void;
+    selectedEnv: string[];
+    setSelectedEnv: (selectedEnv: string[]) => void;
+    selectEnvironment: (name: string, selected: boolean) => void;
 }
 
 export const useAppConfigStore = createWithEqualityFn<AppConfigState>((set) => ({
@@ -48,9 +51,36 @@ export const useAppConfigStore = createWithEqualityFn<AppConfigState>((set) => (
         set({config: config})
     },
     readiness: undefined,
-    setReadiness: (readiness: any)  => {
-        set({readiness: readiness})
+    setReadiness: (r: any)  => {
+        set((state: AppConfigState) => {
+            if (JSON.stringify(r) !== JSON.stringify(state?.readiness)) {
+                return ({readiness: r})
+            } else {
+                return ({readiness: state.readiness})
+            }
+        });
     },
+    selectedEnv: [],
+    setSelectedEnv: (selectedEnv: string[])   => {
+        set((state: AppConfigState) => {
+            state.selectedEnv.length = 0;
+            state.selectedEnv.push(...selectedEnv);
+            return {selectedEnv: state.selectedEnv};
+        });
+    },
+    selectEnvironment(name: string, selected: boolean) {
+        console.log(name, selected)
+        set((state: AppConfigState) => {
+            if (selected && !state.selectedEnv.includes(name)) {
+                state.selectedEnv.push(name);
+            } else if (!selected && state.selectedEnv.includes(name)) {
+                const filtered = state.selectedEnv.filter(e => e !== name);
+                state.selectedEnv.length = 0;
+                state.selectedEnv.push(...filtered);
+            }
+            return {selectedEnv: state.selectedEnv};
+        });
+    }
 }), shallow)
 
 
@@ -77,6 +107,7 @@ export const useProjectsStore = createWithEqualityFn<ProjectsState>((set) => ({
 }), shallow)
 
 interface ProjectState {
+    isPulling: boolean,
     isPushing: boolean,
     isRunning: boolean,
     images: string [],
@@ -101,6 +132,7 @@ export const useProjectStore = createWithEqualityFn<ProjectState>((set) => ({
     operation: 'none',
     tabIndex: 'files',
     isPushing: false,
+    isPulling: false,
     isRunning: false,
     setProject: (project: Project, operation:  "create" | "select" | "delete"| "none" | "copy") => {
         set((state: ProjectState) => ({
@@ -111,6 +143,7 @@ export const useProjectStore = createWithEqualityFn<ProjectState>((set) => ({
             context: {},
             trace: {},
             memory: {},
+            tabIndex: state.tabIndex
         }));
     },
     setOperation: (o: "create" | "select" | "delete"| "none" | "copy") => {
@@ -177,7 +210,8 @@ export const useFilesStore = createWithEqualityFn<FilesState>((set) => ({
 interface FileState {
     file?: ProjectFile;
     operation: "create" | "select" | "delete" | "none" | "copy" | "upload";
-    setFile: (operation:  "create" | "select" | "delete"| "none" | "copy" | "upload", file?: ProjectFile) => void;
+    designerTab?: "routes" | "rest" | "beans";
+    setFile: (operation:  "create" | "select" | "delete"| "none" | "copy" | "upload", file?: ProjectFile, designerTab?: "routes" | "rest" | "beans") => void;
     editAdvancedProperties: boolean;
     setEditAdvancedProperties: (editAdvancedProperties: boolean) => void;
     addProperty: string;
@@ -187,12 +221,14 @@ interface FileState {
 export const useFileStore = createWithEqualityFn<FileState>((set) => ({
     file: undefined,
     operation: "none",
+    designerTab: undefined,
     editAdvancedProperties: false,
     addProperty: '',
-    setFile: (operation:  "create" | "select" | "delete"| "none" | "copy" | "upload", file?: ProjectFile) => {
+    setFile: (operation:  "create" | "select" | "delete"| "none" | "copy" | "upload", file?: ProjectFile, designerTab?: "routes" | "rest" | "beans") => {
         set((state: FileState) => ({
             file: file,
-            operation: operation
+            operation: operation,
+            designerTab: designerTab
         }));
     },
     setEditAdvancedProperties: (editAdvancedProperties: boolean) => {

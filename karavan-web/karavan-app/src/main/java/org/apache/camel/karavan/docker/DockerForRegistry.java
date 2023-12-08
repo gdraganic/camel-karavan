@@ -18,8 +18,8 @@ package org.apache.camel.karavan.docker;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.apache.camel.karavan.infinispan.model.ContainerStatus;
 import org.apache.camel.karavan.code.CodeService;
+import org.apache.camel.karavan.infinispan.model.ContainerStatus;
 import org.jboss.logging.Logger;
 
 @ApplicationScoped
@@ -39,7 +39,7 @@ public class DockerForRegistry {
         try {
             LOGGER.info("Registry is starting...");
             var compose = codeService.getInternalDockerComposeService(REGISTRY_CONTAINER_NAME);
-            dockerService.createContainerFromCompose(compose, ContainerStatus.ContainerType.internal);
+            dockerService.createContainerFromCompose(compose, ContainerStatus.ContainerType.internal, false);
             dockerService.runContainer(REGISTRY_CONTAINER_NAME);
             LOGGER.info("Registry is started");
         } catch (Exception e) {

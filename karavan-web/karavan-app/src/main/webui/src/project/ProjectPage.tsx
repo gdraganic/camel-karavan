@@ -24,8 +24,8 @@ import {
 import '../designer/karavan.css';
 import {ProjectToolbar} from "./ProjectToolbar";
 import {ProjectLogPanel} from "./log/ProjectLogPanel";
-import {Project} from "../api/ProjectModels";
-import {useFileStore, useProjectsStore, useProjectStore} from "../api/ProjectStore";
+import {Project, ProjectType} from "../api/ProjectModels";
+import {useAppConfigStore, useFilesStore, useFileStore, useProjectsStore, useProjectStore} from "../api/ProjectStore";
 import {MainToolbar} from "../designer/MainToolbar";
 import {ProjectTitle} from "./ProjectTitle";
 import {ProjectPanel} from "./ProjectPanel";
@@ -33,14 +33,16 @@ import {FileEditor} from "./file/FileEditor";
 import {shallow} from "zustand/shallow";
 import {useParams} from "react-router-dom";
 import {KaravanApi} from "../api/KaravanApi";
-import {ProjectDataPoller} from "./ProjectDataPoller";
 import {ImageDownloadToolbar} from "./ImageDownloadToolbar";
+import {ProjectService} from "../api/ProjectService";
 
 export function ProjectPage() {
 
     const {file, operation} = useFileStore();
+    const [files] = useFilesStore((s) => [s.files], shallow);
     const [projects] = useProjectsStore((state) => [state.projects], shallow)
-    const [project, setProject, tab, setTab] = useProjectStore((s) => [s.project, s.setProject, s.tabIndex, s.setTabIndex], shallow);
+    const [project, setProject, tabIndex, setTabIndex, refreshTrace] =
+        useProjectStore((s) => [s.project, s.setProject, s.tabIndex, s.setTabIndex, s.refreshTrace], shallow);
 
     let {projectId} = useParams();
 
@@ -56,6 +58,16 @@ export function ProjectPage() {
         }
     }, []);
 
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (tabIndex === 'build' || tabIndex === 'container') {
+                ProjectService.refreshAllContainerStatuses();
+                ProjectService.refreshImages(project.projectId);
+            }
+        }, 2000)
+        return () => clearInterval(interval);
+    }, [tabIndex]);
+
     function isBuildIn(): boolean {
         return ['kamelets', 'templates', 'services'].includes(project.projectId);
     }
@@ -64,8 +76,11 @@ export function ProjectPage() {
         return !isBuildIn() && !showFilePanel;
     }
 
-    const buildIn = isBuildIn();
-    console.log("Project refresh")
+    function hasReadme(): boolean {
+        return files.map(f => f.name).findIndex(f => f.toLowerCase() === 'readme.md') !== -1;
+    }
+
+    const ephemeral = project.type === ProjectType.ephemeral
     const showFilePanel = file !== undefined && operation === 'select';
     return (
         <PageSection className="project-page" padding={{default: 'noPadding'}}>
@@ -75,13 +90,14 @@ export function ProjectPage() {
             <PageSection className="tools-section" padding={{default: 'noPadding'}}>
                 <Flex direction={{default: "column"}} spaceItems={{default: "spaceItemsNone"}}>
                     <FlexItem className="project-tabs">
-                        {showTabs() && <Tabs activeKey={tab} onSelect={(event, tabIndex) => setTab(tabIndex)}>
+                        {showTabs() && <Tabs activeKey={tabIndex} onSelect={(event, tabIndex) => setTabIndex(tabIndex)}>
+                            {!ephemeral && <Tab eventKey="topology" title="Topology"/>}
                             <Tab eventKey="files" title="Files"/>
-                            <Tab eventKey="topology" title="Topology"/>
-                            <Tab eventKey="dashboard" title="Dashboard"/>
-                            <Tab eventKey="trace" title="Trace"/>
-                            <Tab eventKey="build" title="Build"/>
+                            {!ephemeral && <Tab eventKey="dashboard" title="Dashboard"/>}
+                            {!ephemeral && <Tab eventKey="trace" title="Trace"/>}
+                            {!ephemeral && <Tab eventKey="build" title="Build"/>}
                             <Tab eventKey="container" title="Container"/>
+                            {hasReadme() && <Tab eventKey="readme" title="Readme"/>}
                         </Tabs>}
                     </FlexItem>
                 </Flex>
@@ -89,7 +105,6 @@ export function ProjectPage() {
             {showFilePanel && <FileEditor projectId={project.projectId}/>}
             {!showFilePanel && <ProjectPanel/>}
             <ProjectLogPanel/>
-            <ProjectDataPoller/>
         </PageSection>
     )
 }

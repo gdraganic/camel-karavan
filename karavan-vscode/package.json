@@ -4,7 +4,7 @@
   "displayName": "Karavan",
   "icon": "icons/karavan.png",
   "description": "Integration Toolkit for Apache Camel",
-  "version": "4.0.1",
+  "version": "4.1.1",
   "license": "Apache-2.0",
   "preview": false,
   "bugs": {
@@ -41,6 +41,7 @@
   ],
   "activationEvents": [
     "onCommand:karavan.create-yaml",
+    "onCommand:karavan.create-kamelet",
     "onCommand:karavan.create-application",
     "onCommand:karavan.deploy",
     "onCommand:karavan.open",
@@ -284,13 +285,16 @@
             "camel.karavan.target=$TARGET",
             "camel.jbang.gav=$GAV",
             "camel.jbang.version=4.1.0",
-            "camel.jbang.runtime=$RUNTIME",
+            "camel.jbang.runtime=camel-main",
+            "camel.jbang.dependencies=camel-console,camel-platform-http-main",
             "camel.jbang.exportDir=.export",
             "camel.health.enabled=true",
             "camel.health.exposure-level=full",
             "camel.server.enabled=true",
             "camel.server.healthCheckEnabled=true",
-            "camel.server.devConsoleEnabled=true"
+            "camel.server.devConsoleEnabled=true",
+            "camel.main.tracingStandby=true",
+            "camel.context.dev-console=true"
           ],
           "description": "Camel-main application.properties template",
           "scope": "machine",
@@ -378,7 +382,7 @@
             "jkube.imagePullPolicy=IfNotPresent",
             "jkube.enricher.jkube-controller.type=Deployment",
             "jkube.enricher.jkube-controller.replicaCount=1",
-            "jkube.enricher.jkube-service.port=80"
+            "jkube.enricher.jkube-service.port=80:8080"
           ],
           "description": "application.properties template for camel-springboot on Kubernetes",
           "scope": "machine",
@@ -399,7 +403,7 @@
             "jkube.imagePullPolicy=IfNotPresent",
             "jkube.enricher.jkube-controller.type=Deployment",
             "jkube.enricher.jkube-controller.replicaCount=1",
-            "jkube.enricher.jkube-service.port=80"
+            "jkube.enricher.jkube-service.port=80:8080"
           ],
           "description": "application.properties template for camel-main on Kubernetes",
           "scope": "machine",
@@ -420,7 +424,7 @@
             "jkube.imagePullPolicy=IfNotPresent",
             "jkube.enricher.jkube-controller.type=Deployment",
             "jkube.enricher.jkube-controller.replicaCount=1",
-            "jkube.enricher.jkube-service.port=80"
+            "jkube.enricher.jkube-service.port=80:8080"
           ],
           "description": "application.properties template for camel-springboot on Kubernetes",
           "scope": "machine",
@@ -445,7 +449,7 @@
             "jkube.imagePullPolicy=IfNotPresent",
             "jkube.enricher.jkube-controller.type=Deployment",
             "jkube.enricher.jkube-controller.replicaCount=1",
-            "jkube.enricher.jkube-service.port=80",
+            "jkube.enricher.jkube-service.port=80:8080",
             "jkube.enricher.jkube-project-label.group=karavan",
             "jkube.enricher.jkube-project-label.provider=karavan",
             "jkube.recreate=true"
@@ -465,6 +469,11 @@
       {
         "command": "karavan.create-yaml",
         "title": "Karavan: Create Integration",
+        "icon": "$(add)"
+      },
+      {
+        "command": "karavan.create-kamelet",
+        "title": "Karavan: Create Kamelet",
         "icon": "$(add)"
       },
       {
@@ -533,6 +542,11 @@
       "explorer/context": [
         {
           "command": "karavan.create-yaml",
+          "when": "explorerResourceIsFolder || explorerResourceIsRoot",
+          "group": "karavan@2"
+        },
+        {
+          "command": "karavan.create-kamelet",
           "when": "explorerResourceIsFolder || explorerResourceIsRoot",
           "group": "karavan@2"
         },
@@ -607,6 +621,11 @@
         },
         {
           "command": "karavan.create-yaml",
+          "when": "view == integrations",
+          "group": "navigation@0"
+        },
+        {
+          "command": "karavan.create-kamelet",
           "when": "view == integrations",
           "group": "navigation@0"
         },
@@ -739,7 +758,7 @@
     "@types/glob": "^7.1.3",
     "@types/mocha": "^8.0.4",
     "@types/node": "^18.11.18",
-    "@types/react": "18.2.0",
+    "@types/react": "^18.2.33",
     "@types/react-dom": "18.2.1",
     "@types/shelljs": "^0.8.10",
     "@types/vscode": "^1.56.0",

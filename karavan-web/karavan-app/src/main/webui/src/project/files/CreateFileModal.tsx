@@ -22,20 +22,19 @@ import {
     FormGroup,
     ModalVariant,
     Form,
-    ToggleGroupItem, ToggleGroup, FormHelperText, HelperText, HelperTextItem, TextInput, Select,
-    SelectOption,
-    SelectList, MenuToggleElement, MenuToggle, TextInputGroup, TextInputGroupMain, TextInputGroupUtilities,
+    ToggleGroupItem, ToggleGroup, FormHelperText, HelperText, HelperTextItem, TextInput,
 } from '@patternfly/react-core';
 import '../../designer/karavan.css';
 import {Integration, KameletTypes, MetadataLabels} from "karavan-core/lib/model/IntegrationDefinition";
 import {CamelDefinitionYaml} from "karavan-core/lib/api/CamelDefinitionYaml";
-import {useFileStore, useProjectStore} from "../../api/ProjectStore";
+import {useFilesStore, useFileStore, useProjectStore} from "../../api/ProjectStore";
 import {ProjectFile, ProjectFileTypes} from "../../api/ProjectModels";
 import {CamelUi} from "../../designer/utils/CamelUi";
 import {ProjectService} from "../../api/ProjectService";
 import {shallow} from "zustand/shallow";
 import {CamelUtil} from "karavan-core/lib/api/CamelUtil";
 import {KameletApi} from "karavan-core/lib/api/KameletApi";
+import {TypeaheadSelect, Value} from "../../designer/ui/TypeaheadSelect";
 
 interface Props {
     types: string[],
@@ -45,13 +44,13 @@ interface Props {
 export function CreateFileModal(props: Props) {
 
     const [project] = useProjectStore((s) => [s.project], shallow);
-    const [operation, setFile] = useFileStore((s) => [s.operation, s.setFile], shallow);
+    const [files] = useFilesStore((s) => [s.files], shallow);
+    const [operation, setFile, designerTab] = useFileStore((s) => [s.operation, s.setFile, s.designerTab], shallow);
     const [name, setName] = useState<string>('');
+    const [nameAvailable, setNameAvailable] = useState<boolean>(true);
     const [fileType, setFileType] = useState<string>();
     const [kameletType, setKameletType] = useState<KameletTypes>('source');
-    const [inputValue, setInputValue] = useState<string>();
-    const [selectIsOpen, setSelectIsOpen] = useState<boolean>(false);
-    const [selectedKamelet, setSelectedKamelet] = useState<[string, string]>(['', '']);
+    const [selectedKamelet, setSelectedKamelet] = useState<string>();
 
     useEffect(() => {
         if (props.types.length > 0) {
@@ -73,11 +72,20 @@ export function CreateFileModal(props: Props) {
         if (fileType === 'INTEGRATION') {
             return CamelDefinitionYaml.integrationToYaml(Integration.createNew(name, 'plain'));
         } else if (fileType === 'KAMELET') {
-            console.log(selectedKamelet, inputValue);
             const kameletName = name + (isKamelet ? '-' + kameletType : '');
             const integration = Integration.createNew(kameletName, 'kamelet');
             const meta: MetadataLabels = new MetadataLabels({"camel.apache.org/kamelet.type": kameletType});
             integration.metadata.labels = meta;
+            if (selectedKamelet !== undefined && selectedKamelet !== '') {
+                const kamelet= KameletApi.getKamelets().filter(k => k.metadata.name === selectedKamelet).at(0);
+                if (kamelet) {
+                    (integration as any).spec = kamelet.spec;
+                    (integration as any).metadata.labels = kamelet.metadata.labels;
+                    (integration as any).metadata.annotations = kamelet.metadata.annotations;
+                    const i = CamelUtil.cloneIntegration(integration);
+                    return CamelDefinitionYaml.integrationToYaml(i);
+                }
+            }
             return CamelDefinitionYaml.integrationToYaml(integration);
         } else {
             return '';
@@ -85,20 +93,20 @@ export function CreateFileModal(props: Props) {
     }
 
     function confirmAndCloseModal() {
-        const extension = ProjectFileTypes.filter(value => value.name === fileType)[0].extension;
-        const filename = (extension !== 'java') ? fileNameCheck(name) : CamelUi.javaNameFromTitle(name);
         const code = getCode();
-        if (filename && extension) {
-            const fullFileName = filename + (isKamelet ? '-' + kameletType : '') + '.' + extension;
-            const file = new ProjectFile(fullFileName, project.projectId, code, Date.now());
-            ProjectService.createFile(file);
-            cleanValues();
-            if (code) {
-                setFile('select', file);
-            } else {
-                setFile("none");
-            }
+        const fullFileName = getFullFileName(name, fileType);
+        const file = new ProjectFile(fullFileName, project.projectId, code, Date.now());
+        ProjectService.createFile(file);
+        cleanValues();
+        if (code) {
+            setFile('select', file, designerTab);
+        } else {
+            setFile("none");
         }
+    }
+
+    function getExistingFilenames(): string[] {
+        return files.map(f => f.name);
     }
 
     function fileNameCheck(title: string) {
@@ -106,57 +114,29 @@ export function CreateFileModal(props: Props) {
     }
 
     const isKamelet = props.isKameletsProject;
-    const extension = ProjectFileTypes.filter(value => value.name === fileType)[0]?.extension;
-    const filename = (extension !== 'java')
-        ? fileNameCheck(name)
-        : CamelUi.javaNameFromTitle(name);
-    const fullFileName = filename + (isKamelet ? '-' + kameletType : '') + '.' + extension;
 
-    const selectOptions: React.JSX.Element[] = []
-    KameletApi.getKamelets()
+    const listOfValues: Value[] = KameletApi.getKamelets()
         .filter(k => k.metadata.labels["camel.apache.org/kamelet.type"] === kameletType)
-        .filter(k => k.spec.definition.title.toLowerCase().includes(inputValue?.toLowerCase() || ''))
-        .forEach((kamelet) => {
-        const s = <SelectOption key={kamelet.metadata.name}
-                                value={kamelet.metadata.name}
-                                description={kamelet.spec.definition.title}
-                                isFocused={kamelet.metadata.name === selectedKamelet[0]}
-                                onClick={event => {
-                                    setSelectedKamelet([kamelet.metadata.name, kamelet.spec.definition.title]);
-                                    setSelectIsOpen(false);
-                                    setInputValue(kamelet.spec.definition.title)
-                                }}
-        />;
-        selectOptions.push(s);
-    })
+        .map(k => {
+            const v: Value = {value: k.metadata.name, children: k.spec.definition.title}
+            return v;
+        })
 
+    function getFullFileName(name: string, type?: string) {
+        let extension = ProjectFileTypes.filter(value => value.name === type)[0]?.extension;
+        extension = extension === '*' ? '' : '.' + extension;
+        const filename = (extension !== 'java')
+            ? fileNameCheck(name)
+            : CamelUi.javaNameFromTitle(name);
+        return filename + (isKamelet ? '-' + kameletType : '') + extension;
+    }
 
-    const toggle = (toggleRef: React.Ref<MenuToggleElement>) => (
-        <MenuToggle variant={"typeahead"}
-            isFullWidth
-            ref={toggleRef}
-            onClick={() => setSelectIsOpen(!selectIsOpen)}
-            isExpanded={selectIsOpen}
-            isDisabled={false}>
-            <TextInputGroup isPlain>
-                <TextInputGroupMain
-                    value={inputValue}
-                    onClick={event => {}}
-                    onChange={(event, value) => {
-                        setInputValue(value);
-                        setSelectIsOpen(true)
-                    }}
-                    id="typeahead-select-input"
-                    autoComplete="off"
-                    // innerRef={textInputRef}
-                    placeholder="Select Kamelet"
-                    role="combobox"
-                    isExpanded={selectIsOpen}
-                    aria-controls="select-typeahead-listbox"
-                />
-            </TextInputGroup>
-        </MenuToggle>
-    );
+    function update(value: string, type?: string) {
+        setName(value);
+        const exists = getExistingFilenames().findIndex(f => f === getFullFileName(value, type)) === -1;
+        setNameAvailable(exists);
+        setFileType(type);
+    }
 
     return (
         <Modal
@@ -165,7 +145,8 @@ export function CreateFileModal(props: Props) {
             isOpen={["create", "copy"].includes(operation)}
             onClose={closeModal}
             actions={[
-                <Button key="confirm" variant="primary" onClick={event => confirmAndCloseModal()}>Save</Button>,
+                <Button key="confirm" variant="primary" isDisabled={!nameAvailable || name === undefined || name.trim().length === 0}
+                        onClick={event => confirmAndCloseModal()}>Save</Button>,
                 <Button key="cancel" variant="secondary" onClick={event => closeModal()}>Cancel</Button>
             ]}
         >
@@ -178,7 +159,7 @@ export function CreateFileModal(props: Props) {
                                 return <ToggleGroupItem key={title} text={title} buttonId={p.name}
                                                         isSelected={fileType === p.name}
                                                         onChange={(_, selected) => {
-                                                            setFileType(p.name);
+                                                            update(name, p.name);
                                                         }}/>
                             })}
                     </ToggleGroup>
@@ -191,32 +172,28 @@ export function CreateFileModal(props: Props) {
                                                     isSelected={kameletType === type}
                                                     onChange={(_, selected) => {
                                                         setKameletType(type as KameletTypes);
-                                                        setSelectedKamelet(['', ''])
+                                                        setSelectedKamelet(undefined)
                                                     }}/>
                         })}
                     </ToggleGroup>
                 </FormGroup>}
                 <FormGroup label="Name" fieldId="name" isRequired>
-                    <TextInput id="name" aria-label="name" value={name} onChange={(_, value) => setName(value)}/>
+                    <TextInput id="name"
+                               aria-label="name"
+                               value={name}
+                               onChange={(_, value) => update(value, fileType)}/>
                     <FormHelperText>
                         <HelperText id="helper-text1">
-                            <HelperTextItem variant={'default'}>{fullFileName}</HelperTextItem>
+                            <HelperTextItem variant={nameAvailable ? 'default' : 'error'}>
+                                {!nameAvailable ? 'File ': ''}{getFullFileName(name, fileType)}{!nameAvailable ? ' already exists': ''}
+                            </HelperTextItem>
                         </HelperText>
                     </FormHelperText>
                 </FormGroup>
                 {isKamelet && <FormGroup label="Copy from" fieldId="kamelet">
-                    <Select
-                        aria-label={"Kamelet"}
-                        onOpenChange={isOpen => setSelectIsOpen(false)}
-                        isOpen={selectIsOpen}
-                        aria-labelledby={"Kamelets"}
-                        toggle={toggle}
-                        shouldFocusToggleOnSelect
-                    >
-                        <SelectList>
-                            {selectOptions}
-                        </SelectList>
-                    </Select>
+                    <TypeaheadSelect listOfValues={listOfValues} onSelect={value => {
+                        setSelectedKamelet(value)
+                    }}/>
                 </FormGroup>}
             </Form>
         </Modal>
